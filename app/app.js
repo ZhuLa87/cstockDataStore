@@ -26,6 +26,22 @@ class App {
 			}
 
 			Log.info(`成功取得 ${stockData.length} 筆股票資料`);
+			
+			// 獲取已上市公司股票代碼
+            Log.info("開始獲取已上市公司股票代碼");
+            const listedStockCodes = await FetchStock.getListedStockCodes();
+            if (!listedStockCodes || listedStockCodes.length === 0) {
+                Log.error("獲取上市公司股票代碼失敗");
+                return false;
+            }
+            
+            // 過濾股票資料
+            Log.info("開始過濾股票資料");
+            const filteredStockData = FetchStock.filterStocks(stockData, listedStockCodes);
+            if (filteredStockData.length === 0) {
+                Log.warn("過濾後沒有符合條件的股票資料");
+                return false;
+            }
 
 			Log.info("開始儲存股票資料");
 			// 先測試資料庫連線
@@ -38,7 +54,7 @@ class App {
 			}
 
 			await Database.initDB();
-			const storeResult = await Database.storeData(stockData, lastModified);
+			const storeResult = await Database.storeData(filteredStockData, lastModified);
 
 			if (storeResult) {
 				Log.info("股票資料儲存成功。");
