@@ -1,0 +1,17 @@
+{
+	"name": "cstock",
+	"version": "1.0.0",
+	"description": "",
+	"main": "app/app.js",
+	"scripts": {
+		"start": "node app/app.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"axios": "^1.8.4",
+		"dotenv": "^16.4.7",
+		"mariadb": "^3.4.0"
+	}
+}

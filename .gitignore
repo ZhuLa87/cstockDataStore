@@ -1,0 +1,15 @@
+# node
+node_modules/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# os
+.DS_Store
+.Thumbs.db
+
+# vscode
+.vscode/
+
+# environment
+.env

@@ -1,0 +1,29 @@
+services:
+  db:
+    image: mariadb:11.4.4
+    container_name: cstock-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      cstock:
+        ipv4_address: 192.168.5.2
+    restart: always
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  cstock:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.5.0/24
