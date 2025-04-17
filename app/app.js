@@ -7,6 +7,9 @@ require("dotenv").config();
 class App {
 	static async start() {
 		try {
+		    // 顯示目前的日誌級別
+		    Log.showLogLevel();
+
 			Log.info("開始獲取股票資料");
 			const result = await FetchStock.getStock();
 			if (!result || result instanceof Error) {

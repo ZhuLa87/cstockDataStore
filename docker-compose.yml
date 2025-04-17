@@ -12,8 +12,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     networks:
-      cstock:
-        ipv4_address: 192.168.5.2
+      - cstock
     restart: always
 
 volumes:
@@ -23,7 +22,3 @@ volumes:
 networks:
   cstock:
     driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 192.168.5.0/24
