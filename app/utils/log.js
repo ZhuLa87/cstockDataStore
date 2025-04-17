@@ -15,6 +15,10 @@ class Log {
 		console.error(`\x1b[31m[ERROR] [${this.getTimeStamp()}] ${message}\x1b[0m`);
 	}
 
+    static debug(message) {
+        console.log(`\x1b[32m[DEBUG] [${this.getTimeStamp()}] ${message}\x1b[0m`);
+    }
+
 	static progress(current, total, message = '') {
 		const percent = Math.round((current / total) * 100);
 		console.log(`\x1b[36m[PROGRESS] [${this.getTimeStamp()}] ${percent}% (${current}/${total}) ${message}\x1b[0m`);

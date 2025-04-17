@@ -16,8 +16,8 @@ class App {
 				return false;
 			}
 
-			// 從結果中解析資料和 last-modified
-			const { data: stockData, lastModified } = result;
+			// 從結果中解析資料
+			const { data: stockData } = result;
 
 			// 檢查取得的資料
 			if (!Array.isArray(stockData) || stockData.length === 0) {
@@ -26,7 +26,7 @@ class App {
 			}
 
 			Log.info(`成功取得 ${stockData.length} 筆股票資料`);
-			
+
 			// 獲取已上市公司股票代碼
             Log.info("開始獲取已上市公司股票代碼");
             const listedStockCodes = await FetchStock.getListedStockCodes();
@@ -34,7 +34,7 @@ class App {
                 Log.error("獲取上市公司股票代碼失敗");
                 return false;
             }
-            
+
             // 過濾股票資料
             Log.info("開始過濾股票資料");
             const filteredStockData = FetchStock.filterStocks(stockData, listedStockCodes);
@@ -53,8 +53,24 @@ class App {
 				return false;
 			}
 
-			await Database.initDB();
-			const storeResult = await Database.storeData(filteredStockData, lastModified);
+            // 檢查資料庫是否已初始化
+            const isInitialized = await Database.checkDB();
+            if (!isInitialized) {
+                Log.info("資料庫尚未初始化，執行初始化操作");
+                // 初始化資料庫
+                const initResult = await Database.initDB();
+                if (!initResult) {
+                    Log.error("資料庫初始化失敗");
+                    return false;
+                }
+                Log.info("資料庫初始化成功");
+            } else {
+                Log.info("資料庫已初始化，跳過初始化步驟");
+            }
+
+			// 使用目前日期作為 useDate
+			const useDate = new Date().toISOString().split("T")[0];
+			const storeResult = await Database.storeStockData(filteredStockData, useDate);
 
 			if (storeResult) {
 				Log.info("股票資料儲存成功。");
@@ -78,10 +94,10 @@ class App {
         const result = await App.start();
         const executionTime = Log.timer('應用程式執行時間');
         Log.info(`應用程式執行完成，共耗時 ${executionTime/1000} 秒`);
-        
+
         // 關閉資料庫連線池
         await Database.closePool();
-        
+
         // 明確結束程式，使用適當的退出碼
         process.exit(result ? 0 : 1);
     } catch (error) {
