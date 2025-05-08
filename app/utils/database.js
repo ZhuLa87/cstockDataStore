@@ -109,84 +109,190 @@ class Database {
 		}
 	}
 
-    // 將股票資料儲存至資料庫
+	// 將股票資料儲存至資料庫
 	static async storeStockData(stockData, tradeDate) {
 		let conn;
 		try {
-			Log.info(`開始存儲 ${stockData.length} 筆股票資料，交易日期: ${tradeDate}`);
+			Log.info(
+				`開始存儲 ${stockData.length} 筆股票資料，交易日期: ${tradeDate}`
+			);
 			conn = await pool.getConnection();
 
 			// 開始事務
 			await conn.beginTransaction();
 
+			// 一次取得所有現有的股票資訊
+			const existingStocks = await conn.query(
+				`SELECT id, stock_code, stock_name FROM stock_info`
+			);
+
+			// 建立快速查詢用的 Map (以股票代碼為鍵)
+			const stockMap = new Map();
+			existingStocks.forEach((stock) => {
+				stockMap.set(stock.stock_code, {
+					id: stock.id,
+					name: stock.stock_name,
+				});
+			});
+
+			Log.debug(`從資料庫取得 ${existingStocks.length} 筆股票基本資料`);
+
+			// 準備新增的股票資訊
+			const newStocks = [];
+			const updatedStocks = [];
+			const priceUpdates = [];
+
 			let successCount = 0;
 			let errorCount = 0;
 
+			// 處理每一筆股票資料
 			for (const stock of stockData) {
 				try {
-					// 檢查股票是否已存在於 stock_info 表中
-					const stockExists = await conn.query(
-						`SELECT id FROM stock_info WHERE stock_code = ?`,
-						[stock.stockCode]
-					);
-
-					let stockId;
-
-					if (stockExists.length === 0) {
-						// 新增股票資訊
-						const insertResult = await conn.query(
-							`INSERT INTO stock_info (stock_code, stock_name) VALUES (?, ?)`,
-							[stock.stockCode, stock.stockName]
-						);
-						stockId = insertResult.insertId;
-						Log.debug(`新增股票資訊: ${stock.stockCode} - ${stock.stockName}`);
-					} else {
-						stockId = stockExists[0].id;
-						// 更新股票名稱（以防名稱有變更）
-						await conn.query(
-							`UPDATE stock_info SET stock_name = ? WHERE id = ?`,
-							[stock.stockName, stockId]
-						);
-					}
-
 					// 處理無收盤價的情況
 					let closePrice = stock.closingPrice;
-					if (closePrice === '--' || closePrice === '' || closePrice === null || closePrice === undefined) {
+					if (
+						closePrice === "--" ||
+						closePrice === "" ||
+						closePrice === null ||
+						closePrice === undefined
+					) {
 						closePrice = -1;
-						Log.debug(`股票 ${stock.stockCode} 無收盤價，設定為 -1`);
+						Log.debug(
+							`股票 ${stock.stockCode} 無收盤價，設定為 -1`
+						);
 					}
 
-					// 檢查股票價格是否已存在
-					const priceExists = await conn.query(
-						`SELECT id FROM stock_history_price WHERE stock_id = ? AND date = ?`,
-						[stockId, tradeDate]
-					);
+					let stockId;
+					const existingStock = stockMap.get(stock.stockCode);
 
-					if (priceExists.length === 0) {
-						// 新增股票價格
-						await conn.query(
-							`INSERT INTO stock_history_price (stock_id, date, close_price) VALUES (?, ?, ?)`,
-							[stockId, tradeDate, closePrice]
-						);
+					if (!existingStock) {
+						// 全新的股票，準備新增
+						newStocks.push({
+							code: stock.stockCode,
+							name: stock.stockName,
+						});
+						// 暫存此筆資訊稍後會一次性新增到資料庫
+						stockMap.set(stock.stockCode, {
+							id: null, // 暫時設為 null，待新增後會被更新
+							name: stock.stockName,
+							isNew: true,
+							closePrice: closePrice,
+						});
+					} else if (existingStock.name !== stock.stockName) {
+						// 股票名稱有變更，準備更新
+						updatedStocks.push({
+							id: existingStock.id,
+							code: stock.stockCode,
+							name: stock.stockName,
+						});
+						// 更新 Map 中的資訊
+						existingStock.name = stock.stockName;
+						existingStock.closePrice = closePrice;
 					} else {
-						// 更新股票價格
-						await conn.query(
-							`UPDATE stock_history_price SET close_price = ? WHERE stock_id = ? AND date = ?`,
-							[closePrice, stockId, tradeDate]
-						);
+						// 股票已存在且名稱未變更，只需記錄價格資訊
+						existingStock.closePrice = closePrice;
 					}
 
 					successCount++;
 				} catch (stockError) {
-					Log.error(`處理股票 ${stock.stockCode} 資料時發生錯誤: ${stockError.message}`);
+					Log.error(
+						`處理股票 ${stock.stockCode} 資料時發生錯誤: ${stockError.message}`
+					);
 					errorCount++;
 				}
+			}
+
+			// 批次新增股票資訊 - 修正語法
+			if (newStocks.length > 0) {
+				let lastInsertId = 0;
+				// 使用逐一插入方式代替批量插入
+				for (const stock of newStocks) {
+					const insertResult = await conn.query(
+						`INSERT INTO stock_info (stock_code, stock_name) VALUES (?, ?)`,
+						[stock.code, stock.name]
+					);
+
+					if (!lastInsertId && insertResult.insertId) {
+						lastInsertId = insertResult.insertId;
+					}
+
+					// 更新 Map 中的股票 ID
+					const mapStock = stockMap.get(stock.code);
+					if (mapStock && mapStock.isNew) {
+						mapStock.id = insertResult.insertId;
+					}
+				}
+
+				Log.debug(`新增 ${newStocks.length} 筆股票基本資訊`);
+			}
+
+			// 批次更新股票名稱 - 修正語法
+			if (updatedStocks.length > 0) {
+				for (const stock of updatedStocks) {
+					await conn.query(
+						`UPDATE stock_info SET stock_name = ? WHERE id = ?`,
+						[stock.name, stock.id]
+					);
+				}
+
+				Log.debug(`更新 ${updatedStocks.length} 筆股票名稱`);
+			}
+
+			// 準備價格資料的新增或更新
+			const stockPrices = [];
+
+			// 查詢目前日期已存在的價格記錄
+			const existingPrices = await conn.query(
+				`SELECT stock_id FROM stock_history_price WHERE date = ?`,
+				[tradeDate]
+			);
+
+			// 建立已存在價格記錄的快速查詢 Set
+			const existingPriceSet = new Set();
+			existingPrices.forEach((price) => {
+				existingPriceSet.add(price.stock_id);
+			});
+
+			// 整理每筆股票的價格資訊
+			for (const stock of stockData) {
+				const stockInfo = stockMap.get(stock.stockCode);
+				if (stockInfo && stockInfo.id) {
+					// 處理價格資訊
+					if (existingPriceSet.has(stockInfo.id)) {
+						// 更新價格
+						await conn.query(
+							`UPDATE stock_history_price SET close_price = ? WHERE stock_id = ? AND date = ?`,
+							[stockInfo.closePrice, stockInfo.id, tradeDate]
+						);
+					} else {
+						// 新增價格資訊到暫存陣列
+						stockPrices.push({
+							stockId: stockInfo.id,
+							date: tradeDate,
+							closePrice: stockInfo.closePrice,
+						});
+					}
+				}
+			}
+
+			// 批次新增股票價格 - 修正語法
+			if (stockPrices.length > 0) {
+				for (const price of stockPrices) {
+					await conn.query(
+						`INSERT INTO stock_history_price (stock_id, date, close_price) VALUES (?, ?, ?)`,
+						[price.stockId, price.date, price.closePrice]
+					);
+				}
+
+				Log.debug(`新增 ${stockPrices.length} 筆股票價格資料`);
 			}
 
 			// 提交事務
 			await conn.commit();
 
-			Log.info(`股票資料儲存完成: 成功 ${successCount} 筆, 失敗 ${errorCount} 筆`);
+			Log.info(
+				`股票資料儲存完成: 成功 ${successCount} 筆, 失敗 ${errorCount} 筆`
+			);
 			return successCount > 0;
 		} catch (error) {
 			if (conn) {
