@@ -13,17 +13,19 @@ class FetchStock {
             const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?response=csv&date=${useDate}&type=ALLBUT0999`;
 
             const response = await axios.get(url, {
-                responseType: 'arraybuffer',
+                responseType: "arraybuffer",
             });
 
             // 將 ms950 編碼的資料轉換為 UTF-8
             const decodedData = iconv.decode(response.data, "ms950");
 
             // 解析 CSV 資料
-            const rows = decodedData.split("\n").map(row => row.split(","));
+            const rows = decodedData.split("\n").map((row) => row.split(","));
 
             // 找到每日收盤行情的起始位置
-            const startIndex = rows.findIndex(row => row[0] && row[0].includes("每日收盤行情"));
+            const startIndex = rows.findIndex(
+                (row) => row[0] && row[0].includes("每日收盤行情")
+            );
             if (startIndex === -1) {
                 Log.warn("未找到每日收盤行情的起始位置");
                 return { data: [] };
@@ -43,7 +45,7 @@ class FetchStock {
                     stockData.push({
                         stockCode,
                         stockName,
-                        closingPrice
+                        closingPrice,
                     });
                 }
             }
@@ -80,7 +82,7 @@ class FetchStock {
             }
 
             // 從資料中提取股票代碼
-            const listedStockCodes = data.map(item => item.Company);
+            const listedStockCodes = data.map((item) => item.Company);
             Log.info(`成功獲取 ${listedStockCodes.length} 個上市公司股票代碼`);
             return listedStockCodes;
         } catch (error) {
@@ -97,12 +99,14 @@ class FetchStock {
         }
 
         // 過濾出只在已上市的股票代碼中的資料
-        const filteredStocks = stockData.filter(stock => {
+        const filteredStocks = stockData.filter((stock) => {
             const stockCode = stock.stockCode || stock.code;
             return listedStockCodes.includes(stockCode);
         });
 
-        Log.info(`過濾前總數: ${stockData.length} 筆，過濾後剩餘 ${filteredStocks.length} 筆股票資料`);
+        Log.info(
+            `過濾前總數: ${stockData.length} 筆，過濾後剩餘 ${filteredStocks.length} 筆股票資料`
+        );
         return filteredStocks;
     }
 }
